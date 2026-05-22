@@ -30,22 +30,18 @@ jobs:
       - uses: github/codeql-action/autobuild@v3
       - uses: github/codeql-action/analyze@v3
         with:
-          category: "/language:javascript"
+          category: '/language:javascript'
 
   dependency-review:
     continue-on-error: true
     name: Dependency Review
     runs-on: ubuntu-latest
-    if: github.event_name == "pull_request"
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: moderate
-          deny-licenses: |
-            GPL-2.0
-            GPL-3.0
-            AGPL-3.0
 
   sonarcloud:
     name: SonarCloud Scan
@@ -57,7 +53,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '20'
           cache: npm
       - run: npm install
       - name: SonarCloud Scan
@@ -82,11 +78,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '20'
           cache: npm
       - run: npm install
       - name: Check licenses
-        run: npx license-checker --onlyAllow "MIT;ISC;BSD-2-Clause;BSD-3-Clause;Apache-2.0"
+        run: npx license-checker --onlyAllow 'MIT;ISC;BSD-2-Clause;BSD-3-Clause;Apache-2.0'
         continue-on-error: true
       - name: Save license report
         run: |
@@ -109,20 +105,25 @@ jobs:
     if: always()
     steps:
       - name: Check quality gate
+        env:
+          CODEQL_RESULT: ${{ needs.codeql.result }}
+          SONAR_RESULT: ${{ needs.sonarcloud.result }}
         run: |
-          if [[ "${{ needs.codeql.result }}" == "success" ]]; then
+          if [[ "$CODEQL_RESULT" == "success" ]]; then
             echo "CodeQL passed"
           else
-            echo "CodeQL: ${{ needs.codeql.result }}"
+            echo "CodeQL: $CODEQL_RESULT"
           fi
-          if [[ "${{ needs.sonarcloud.result }}" == "success" ]]; then
+          if [[ "$SONAR_RESULT" == "success" ]]; then
             echo "SonarCloud passed"
           else
-            echo "SonarCloud: ${{ needs.sonarcloud.result }}"
+            echo "SonarCloud: $SONAR_RESULT"
           fi
       - name: Post PR comment
-        if: github.event_name == "pull_request"
+        if: github.event_name == 'pull_request'
         run: |
-          gh pr comment ${{ github.event.pull_request.number }}             --body "Quality gate: ${{ job.status }}"             --repo ${{ github.repository }}
+          gh pr comment ${{ github.event.pull_request.number }} \
+            --body "Quality gate: ${{ job.status }}" \
+            --repo ${{ github.repository }}
         env:
           GH_TOKEN: ${{ github.token }}
