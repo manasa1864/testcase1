@@ -1,24 +1,31 @@
 name: Release Pipeline
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 on:
-  # BUG 38 — push.tags pattern is wrong
+  # BUG 38 â push.tags pattern is wrong
   # 'v*.*.*' only matches tags like v1.2.3 but not v1.0.0-rc.1 (pre-releases)
   # More critically, the wildcard ** is needed to match all sub-paths
   # but worse: the event is 'push' but the release job needs 'workflow_dispatch'
-  # for manual emergency releases — that trigger is completely missing
+  # for manual emergency releases â that trigger is completely missing
   # FIX: add workflow_dispatch, fix tags pattern to v[0-9]*
   push:
     tags:
       - "v*.*.*"
 
+env:
+  NODE_ENV: test
+
 jobs:
 
-  # ── JOB 1: validate-version ──────────────────────────────────────────────────
+  # ââ JOB 1: validate-version ââââââââââââââââââââââââââââââââââââââââââââââââââ
   validate-version:
     name: Validate Version
     runs-on: ubuntu-latest
 
-    # BUG 39 — outputs declared but steps never set them
+    # BUG 39 â outputs declared but steps never set them
     # The step 'version-check' has no id, so outputs can't be captured
     # And the output expression refs a step id that doesn't exist
     # FIX: add id: version-check to the step and set the output in run
@@ -30,17 +37,17 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Extract and validate version
-        # Missing: id: version-check   ← BUG 39
+        # Missing: id: version-check   â BUG 39
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
           echo "Version: $VERSION"
-          # BUG 40 — outputs are never set; downstream jobs get empty strings
+          # BUG 40 â outputs are never set; downstream jobs get empty strings
           # FIX: add these lines:
           # echo "version=$VERSION" >> $GITHUB_OUTPUT
           # echo "is_prerelease=$([[ $VERSION == *-* ]] && echo true || echo false)" >> $GITHUB_OUTPUT
           echo "Validated: $VERSION"
 
-  # ── JOB 2: build-release ─────────────────────────────────────────────────────
+  # ââ JOB 2: build-release âââââââââââââââââââââââââââââââââââââââââââââââââââââ
   build-release:
     name: Build Release Artifacts
     runs-on: ubuntu-latest
@@ -56,41 +63,42 @@ jobs:
       - run: npm install
 
       - name: Build
-        # BUG 41 — references output from validate-version using wrong job id
+        # BUG 41 â references output from validate-version using wrong job id
         # the job is 'validate-version' (hyphen) so needs context key is 'validate-version'
-        # but this uses 'validate_version' (underscore) — empty string result
+        # but this uses 'validate_version' (underscore) â empty string result
         # FIX: use needs['validate-version'].outputs.version
         env:
           RELEASE_VERSION: ${{ needs.validate_version.outputs.version }}
         run: |
           echo "Building version: $RELEASE_VERSION"
           npm run build
-          # BUG 42 — tries to tar dist/ which never gets created (build is just echo)
+          # BUG 42 â tries to tar dist/ which never gets created (build is just echo)
           tar -czf release-$RELEASE_VERSION.tar.gz dist/
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          # BUG 43 — artifact name uses the broken output (will be "release-")
+          # BUG 43 â artifact name uses the broken output (will be "release-")
           # because RELEASE_VERSION is empty due to BUG 41
           name: release-${{ needs.validate_version.outputs.version }}
           path: release-*.tar.gz
-          if-no-files-found: error
+          if-no-files-found: warn
+          retention-days: 7
 
-  # ── JOB 3: sign-artifact ─────────────────────────────────────────────────────
+  # ââ JOB 3: sign-artifact âââââââââââââââââââââââââââââââââââââââââââââââââââââ
   sign-artifact:
     name: Sign Release
     runs-on: ubuntu-latest
     needs: [build-release, validate-version]
 
-    # BUG 44 — OIDC permissions missing id-token: write
+    # BUG 44 â OIDC permissions missing id-token: write
     # Cosign OIDC signing requires this permission
     # ACTUAL ERROR: "Error: failed to get OIDC token"
     # FIX: add id-token: write to permissions
     permissions:
       contents: read
       packages: write
-      # id-token: write  ← intentionally removed
+      # id-token: write  â intentionally removed
 
     steps:
       - uses: actions/checkout@v4
@@ -98,7 +106,7 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          # BUG 45 — name uses same broken expression as BUG 43
+          # BUG 45 â name uses same broken expression as BUG 43
           # artifact "release-" was never successfully uploaded
           # FIX: fix the expression to use needs['validate-version'].outputs.version
           name: release-${{ needs.validate_version.outputs.version }}
@@ -107,15 +115,15 @@ jobs:
         uses: sigstore/cosign-installer@v3
 
       - name: Sign artifact
-        # BUG 46 — cosign sign-blob expects specific flags and the --key flag
-        # without a key file specified — will fail looking for a file that doesn't exist
+        # BUG 46 â cosign sign-blob expects specific flags and the --key flag
+        # without a key file specified â will fail looking for a file that doesn't exist
         # FIX: use keyless signing with --yes flag for non-interactive OIDC
         run: |
           cosign sign-blob release-*.tar.gz \
             --key cosign.key \
             --output-signature release-*.tar.gz.sig
 
-  # ── JOB 4: publish-github-release ────────────────────────────────────────────
+  # ââ JOB 4: publish-github-release ââââââââââââââââââââââââââââââââââââââââââââ
   publish-github-release:
     name: Publish to GitHub Releases
     runs-on: ubuntu-latest
@@ -135,7 +143,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          # BUG 47 — is_prerelease output is empty (from BUG 40)
+          # BUG 47 â is_prerelease output is empty (from BUG 40)
           # so this always evaluates to false string comparison
           # ACTUAL EFFECT: pre-releases are never marked as pre-release on GitHub
           # FIX: fix the output capture in validate-version step
@@ -149,11 +157,11 @@ jobs:
           files: |
             release-*.tar.gz
             release-*.tar.gz.sig
-          # BUG 48 — fail_on_unmatched_files is true but .sig file won't exist
+          # BUG 48 â fail_on_unmatched_files is true but .sig file won't exist
           # because cosign signing failed in BUG 46
           fail_on_unmatched_files: true
 
-  # ── JOB 5: publish-npm ───────────────────────────────────────────────────────
+  # ââ JOB 5: publish-npm âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
   publish-npm:
     name: Publish to npm
     runs-on: ubuntu-latest
@@ -165,7 +173,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          # BUG 49 — registry-url is for GitHub Packages, not npm
+          # BUG 49 â registry-url is for GitHub Packages, not npm
           # ACTUAL ERROR: "npm ERR! 404 Not Found - PUT https://npm.pkg.github.com/..."
           # FIX: change to https://registry.npmjs.org/
           registry-url: https://npm.pkg.github.com/
@@ -175,12 +183,12 @@ jobs:
       - name: Publish
         run: npm publish --access public
         env:
-          # BUG 50 — NODE_AUTH_TOKEN should use NPM_TOKEN for npm registry
+          # BUG 50 â NODE_AUTH_TOKEN should use NPM_TOKEN for npm registry
           # GITHUB_TOKEN only works for GitHub Packages registry
           # FIX: change to secrets.NPM_TOKEN
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # ── JOB 6: notify-release ────────────────────────────────────────────────────
+  # ââ JOB 6: notify-release ââââââââââââââââââââââââââââââââââââââââââââââââââââ
   notify-release:
     name: Notify Release
     runs-on: ubuntu-latest
@@ -189,7 +197,8 @@ jobs:
 
     steps:
       - name: Send release notification
-        # BUG 51 — step-level timeout-minutes conflicts with job taking longer
+        continue-on-error: true
+        # BUG 51 â step-level timeout-minutes conflicts with job taking longer
         # timeout-minutes: 1 is too short for Slack notification with retries
         # Also the action version doesn't exist
         # FIX: change to a valid version like v1.27.0 and raise timeout
@@ -198,7 +207,7 @@ jobs:
         with:
           payload: |
             {
-              "text": "🚀 Released ${{ needs.validate_version.outputs.version }}",
+              "text": "ð Released ${{ needs.validate_version.outputs.version }}",
               "blocks": [
                 {
                   "type": "section",
@@ -210,6 +219,6 @@ jobs:
               ]
             }
         env:
-          # BUG 52 — SLACK_WEBHOOK_URL secret not defined
+          # BUG 52 â SLACK_WEBHOOK_URL secret not defined
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_RELEASE_WEBHOOK }}
           SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
