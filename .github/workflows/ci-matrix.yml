@@ -1,9 +1,6 @@
 name: CI Matrix
 
 on:
-  workflow_call:
-    secrets:
-      inherit
   push:
     branches: [main, develop]
   pull_request:
