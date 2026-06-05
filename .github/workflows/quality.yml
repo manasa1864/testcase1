@@ -11,6 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+
   codeql:
     name: CodeQL Analysis
     runs-on: ubuntu-latest
@@ -61,7 +62,7 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          args: >-
+          args: >
             -Dsonar.projectKey=my-org_aegis-nightmare
             -Dsonar.organization=my-org
             -Dsonar.sources=src/
@@ -107,4 +108,20 @@ jobs:
           SONAR_RESULT: ${{ needs.sonarcloud.result }}
         run: |
           if [[ "$CODEQL_RESULT" == "success" ]]; then
-            echo "Quality gate passed"
+            echo "CodeQL passed"
+          else
+            echo "CodeQL: $CODEQL_RESULT"
+          fi
+          if [[ "$SONAR_RESULT" == "success" ]]; then
+            echo "SonarCloud passed"
+          else
+            echo "SonarCloud: $SONAR_RESULT"
+          fi
+      - name: Post PR comment
+        if: github.event_name == 'pull_request'
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} \
+            --body "Quality gate: ${{ job.status }}" \
+            --repo ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ github.token }}
