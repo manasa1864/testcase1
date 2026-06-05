@@ -54,7 +54,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: npm
       - run: npm install
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v2
@@ -79,7 +78,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: npm
       - run: npm install
       - name: Check licenses
         run: npx license-checker --onlyAllow 'MIT;ISC;BSD-2-Clause;BSD-3-Clause;Apache-2.0'
